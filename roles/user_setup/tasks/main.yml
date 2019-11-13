@@ -1,0 +1,63 @@
+###########################################################################################################
+# Creates the initial server with all the required config. Please note that you need to create a server and then put it in the "hosts" file
+###################################################################################################################
+---
+
+# Check if group "wheel" is present. Otherwise create it
+- name: Make sure we have a 'wheel' group
+  group:
+    name: wheel
+    state: present
+
+- name: Allow 'wheel' group to have passwordless sudo
+  lineinfile:
+    path: /etc/sudoers
+    state: present
+    regexp: '^%wheel'
+    line: '%wheel ALL=(ALL) NOPASSWD: ALL'
+    validate: '/usr/sbin/visudo -cf %s'
+
+# Check for user {{create_user}} in group "wheel". If not present, create it and add to group "wheel" and also create a home directory for that user (/home/{{ create_user }}/)
+- name: Create a new regular user with sudo privileges
+  user:
+    name: '{{ create_user }}'
+    state: present
+    groups: wheel
+    append: true
+    create_home: true
+    shell: /bin/bash
+
+
+# Add SSH key for the user and disable password login for "deploy" user
+- name: Set authorized key for remote user
+  authorized_key:
+    user: '{{ create_user }}'
+    state: present
+    key: '{{ copy_local_key }}'
+
+- name: Disable root login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    state: present
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin prohibit-password'
+
+
+- name: Update cache
+  apt: update_cache=yes
+
+
+- name: Install required system packages
+  apt: name={{ sys_packages }} state=present
+
+
+- name: UFW - Allow SSH connections
+  ufw:
+    rule: allow
+    name: OpenSSH
+
+- name: UFW - Deny all other incoming traffic by default
+  ufw:
+    state: enabled
+    policy: deny
+    direction: incoming

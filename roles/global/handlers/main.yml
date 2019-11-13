@@ -1,0 +1,65 @@
+---
+
+- name: Reload gunicorn and get status
+  command: "{{ item }}"
+  become_user: root
+  register: gunicorn_stat
+  with_items:
+    - sudo systemctl daemon-reload
+    - sudo systemctl restart gunicorn.service
+    - sudo systemctl status gunicorn
+
+- name: Restart NginX and get status
+  command: "{{ item }}"
+  become_user: root
+  register: nginx_stat
+  with_items:
+    - sudo nginx -t
+    - sudo systemctl restart nginx
+    - sudo systemctl status nginx
+
+- name: Activate fail2ban new config
+  command: "{{ item }}"
+  become_user: root
+  register: fail2ban_stat
+  with_items:
+    - sudo service fail2ban restart
+    - sudo systemctl start fail2ban.service
+    - sudo fail2ban-client status
+
+
+- name: Get postgresql status
+  register: postgres_stat
+  command: sudo systemctl status postgresql
+  become_user: root
+
+
+- name: Make sure .env file has the correct permissions
+  shell: chmod 0775 /home/{{create_user}}/{{project_name}}/.env
+  become_user: root
+
+
+# Handlers to simply print status of different services that are reloaded, started, restarted etc.
+
+- name: Print Gunicorn info etc.
+  listen: Reload gunicorn and get status
+  debug:
+        var: gunicorn_stat
+
+
+- name: Print NginX info etc.
+  listen: Restart NginX and get status
+  debug:
+        var: nginx_stat
+
+
+- name: Print Postgres info etc.
+  listen: Get postgresql status
+  debug:
+        var: postgres_stat
+
+
+- name: Print Fail2ban info etc.
+  listen: Activate fail2ban new config
+  debug:
+        var: fail2ban_stat

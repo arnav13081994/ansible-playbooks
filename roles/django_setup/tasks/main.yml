@@ -1,0 +1,116 @@
+############################################################################################################
+#
+#  This file will install and setup the  django project called myproject (can be changed in the vars section in the hosts file)
+#  And for the given IP addresses and domain names.
+#
+#####################################################################################################################
+
+---
+
+
+#
+#    - name: Install software-properties-common
+#      apt: name=software-properties-common state=present
+#
+#
+#    - name: Add Python PPA repo
+#      apt_repository:
+#        repo: ppa:deadsnakes/ppa
+#
+#    - name: Install Python 3.7
+#      apt: name=python3.7 state=present
+#
+#
+## Ubuntu 18.04 ships with python 3.6.8 by default
+#
+#    - name: Make python3.6 an alternative with low priority
+#      alternatives:
+#        name: python3
+#        path: /usr/bin/python3.6
+#        link: /usr/bin/python3
+#        priority: 1
+#
+#
+#    - name: Make python3.7 an alternative with high priority
+#      alternatives:
+#        name: python3
+#        path: /usr/bin/python3.7
+#        link: /usr/bin/python3
+#        priority: 2
+
+
+- name: Upgrade pip
+  command: sudo -H pip3 install --upgrade pip
+  become: yes
+
+- name: Install virtualenv
+  command: sudo -H  pip3 install virtualenv
+  become: yes
+
+
+- name: Pull master branch
+  git:
+    repo: '{{repo_url}}'
+    dest: /home/{{create_user}}/{{project_name}}
+    accept_hostkey: yes
+
+- name: Install the requirements.txt file in the virtualenv and also create the virtualenv, venv, if it doesn't exist already
+  pip:
+    requirements: /home/{{create_user}}/{{project_name}}/requirements.txt
+    virtualenv: /home/{{create_user}}/{{project_name}}/venv
+
+- name: Transfer .env file from local to host
+  become_user: root
+  copy:
+    src: /{{work_dir}}/.env
+    dest: /home/{{create_user}}/{{project_name}}/.env
+    mode: '0775'
+
+# Need to activate the virtualenv using the actual ubuntu bash as opposed to ansible's "simulated bash at /bin/sh"
+
+- name: Activate virtualenv
+  shell: source /home/{{create_user}}/{{project_name}}/venv/bin/activate
+  args:
+    executable: /bin/bash
+
+
+- name: Modify AllOWED_HOSTS in .env file
+  shell:  /home/{{create_user}}/{{project_name}}/venv/bin/dotenv set ALLOWED_HOSTS {{AllOWED_HOSTS}}
+  args:
+    chdir: /home/{{create_user}}/{{project_name}}
+  notify:
+    - Make sure .env file has the correct permissions
+
+- name: Modify DATABASE_URL Hosts in .env file
+  shell:  /home/{{create_user}}/{{project_name}}/venv/bin/dotenv set DATABASE_URL {{DATABASE_URL}}
+  args:
+    chdir: /home/{{create_user}}/{{project_name}}
+  notify:
+    - Make sure .env file has the correct permissions
+
+
+- name: Migrate Django Application
+  django_manage:
+    command: migrate
+    app_path: /home/{{create_user}}/{{project_name}}
+    virtualenv: /home/{{create_user}}/{{project_name}}/venv
+
+- name: Collect all static assets and upload to CDN
+  django_manage:
+    command: collectstatic
+    app_path: /home/{{create_user}}/{{project_name}}
+    virtualenv: /home/{{create_user}}/{{project_name}}/venv
+  notify:
+    - Reload gunicorn and get status
+    - Restart NginX and get status
+    - Get postgresql status
+
+
+- name: Change ownership of {{project_name}} directory and all the files in it to user, {{create_user}}
+  file:
+    dest: /home/{{create_user}}/{{project_name}}
+    owner: "{{create_user}}"
+    group: "{{create_user}}"
+    recurse: yes
+    state: directory
+  become: yes

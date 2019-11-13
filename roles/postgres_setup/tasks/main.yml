@@ -1,0 +1,59 @@
+###########################################################################################################
+#
+#  This script installs PostgreSQL and creates a db and a  db user who has ALL the privileges for that DB.
+#
+#
+###################################################################################################################
+---
+
+- name: Update cache
+  apt: update_cache=yes
+
+- name: Install PostgreSQL and all the required system packages
+  apt: name={{ sys_packages }} state=present
+
+- name: Install "psycopg2"  # This will install the postgres python adapter globally.
+  pip:
+    name: psycopg2
+
+- name: Create a new db with name "{{db_name}}"
+  become_user: postgres
+  postgresql_db: name={{ db_name }}
+
+
+- name: Create and add a new user "{{db_user_name}}" to the database, "{{db_name}}"
+  become_user: postgres
+  postgresql_user:
+    db: '{{db_name}}'
+    name: '{{db_user_name}}'
+    password: '{{db_user_password}}'
+    priv: 'ALL/ALL'
+
+- name: Set client encoding to utf-8
+  become_user: postgres
+  postgresql_query:
+    db: '{{db_name}}'
+    query: ALTER ROLE "{{db_user_name}}" SET client_encoding TO 'utf8'
+
+
+- name: Set default transaction to read only commited transactions
+  become_user: postgres
+  postgresql_query:
+    db: '{{db_name}}'
+    query: ALTER ROLE "{{db_user_name}}" SET default_transaction_isolation TO 'read committed'
+
+
+- name: Set timezone to UTC
+  become_user: postgres
+  postgresql_query:
+    db: '{{db_name}}'
+    query: SET timezone TO 'UTC'
+
+
+- name: Get postgresql status
+  command: systemctl status postgresql
+  register: stat_postgresql
+  become_user: root
+
+- debug: msg="{{ stat_postgresql.stdout }}"
+- debug: msg="{{ stat_postgresql.stderr }}"

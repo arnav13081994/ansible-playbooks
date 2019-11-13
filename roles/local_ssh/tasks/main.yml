@@ -1,0 +1,5 @@
+---
+
+# Please note that the deploy key needs to be added to the ssh agent just once.
+- name: load DEPLOY KEY in SSH Agent
+  shell: ssh-add ~/.ssh/deploykey

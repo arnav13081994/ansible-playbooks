@@ -1,0 +1,170 @@
+###########################################################################################################
+# This playbook will configure to send emails that are sent to root and any other local server emails to {{email}}
+
+# https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-postfix-as-a-send-only-smtp-server-on-ubuntu-16-04
+
+# Make sure there is an SPF record for the domain
+
+###################################################################################################################
+---
+
+# TODO Add self signed lets encrypt certificates and use TLS, SSMTP
+
+
+- name: Update cache
+  apt: update_cache=yes
+
+# Set System HostName
+
+- name: Change System Hostname To {{ hostname }}.{{ domain_name }}
+  hostname:
+    name: "{{ hostname }}.{{ domain_name }}"
+
+- name: Install mailutils and its dependencies
+  apt: name={{ sys_packages }} state=present
+
+
+# Configure Postfix
+- name: Configure Postfix inet_interfaces parameter.
+  replace:
+    path: /etc/postfix/main.cf
+    regexp: 'inet_interfaces = all'
+    replace: 'inet_interfaces = loopback-only'
+  notify:  Restart Postfix
+
+- name: Change Postfix Hostname
+  shell: postconf -e 'myhostname = {{ hostname }}.{{ domain_name }}'
+  notify:  Restart Postfix
+
+- name: Configure Postfix mydestination parameter
+  replace:
+    path: /etc/postfix/main.cf
+    regexp: 'mydestination.{0,}'
+    replace: 'mydestination = $myhostname, localhost.$mydomain, $mydomain'
+  notify:  Restart Postfix
+
+
+# Make sure emails are sent from user@{{doamin}} and not user@mail.{{domain_name}}
+- name: Configure Postfix to send emails from domain, {{domain_name}}
+  lineinfile:
+    path: /etc/postfix/main.cf
+    line: 'masquerade_domains = {{domain_name}}'
+    insertafter: EOF
+  notify:  Restart Postfix
+
+
+
+- name: Test sending email to {{email}}
+  shell: echo "This is the body of the email" | mail -s "This is the subject line" {{email}}
+
+# Configure aliases so that emails sent to root and redircted to {{email}}
+- name: Configure /etc/aliases to redirect system generated mails from root to {{email}}.
+  lineinfile:
+    path: /etc/aliases
+    line: 'root:    {{email}}'
+    insertafter: EOF
+  notify: Make sure changes take effect
+
+
+
+- name: Test sending email to root that should get redirected to {{email}}
+  shell: echo "This is the body of the email" | mail -s "This is the subject line" root
+
+
+# Get email alert if someone logs in as root user
+- name:
+  lineinfile:
+    path: ~/.bashrc
+    line: 'echo "ALERT - Root Shell Access ({{hostname}}) on:" `date` `who` | mail -s "Alert: Root Access from `who | cut -d"(" -f2 | cut -d")" -f1`" {{email}}'
+    insertafter: EOF
+
+
+# Create dir /var/log/arnav and then a file called daily_data.log
+# Create a bash script in cron.d and make it executable and synlink to daily cron job.
+
+- name: Create and Populate a new file called "/var/log/arnav/daily_nginx_data.log" This is where all nginx access log insights will get logged to.
+  blockinfile:
+    path: /var/log/arnav/daily_nginx_data.log
+    create: yes
+    block: |
+      # This is a comment simply to create the file.
+
+
+- name: Create and Populate a new file called "/etc/scripts/nginx_insights". This is the bash scripts that reads NginX acces logs and logs to the file made earlier.
+  blockinfile:
+    path: /etc/scripts/nginx_insights
+    create: yes
+    block: |
+      ## Sort by all http response codes
+      echo "HTTP Response Codes | Number of requests made" | sudo tee  /var/log/arnav/daily_nginx_data.log
+      sudo awk '{print $9}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | sudo tee -a /var/log/arnav/daily_nginx_data.log
+
+      ## Get all urls that are not returning 200 along with their size
+      echo -e "\nResponse code | Requested URL Relative Path | Size of request (in bytes)" | sudo tee -a /var/log/arnav/daily_nginx_data.log
+      sudo awk '($9 !~ /200/)' /var/log/nginx/access.log | awk '{print $9,$7,$10}' | sort | uniq | sudo tee -a /var/log/arnav/daily_nginx_data.log
+
+      ## IPs that have no user agents
+      echo -e "\nIp Addresses with  no user agents"  | sudo tee -a /var/log/arnav/daily_nginx_data.log
+      sudo awk -F\" '($6 ~ /^-?$/)' /var/log/nginx/access.log | awk '{print $1}' | sort | uniq | sudo tee -a /var/log/arnav/daily_nginx_data.log
+
+      ## Get all IPs that are looking for php files. This is mainly for hacking attempts
+      echo -e "\nIP addresses looking for php files to hack"  | sudo tee -a /var/log/arnav/daily_nginx_data.log
+      sudo awk '($9 ~ /404/)' /var/log/nginx/access.log | awk -F\" '($2 ~ "^GET .*\.php")' | awk '{print $7}' | sort | uniq -c | sort -r | head -n 20 | sudo tee -a /var/log/arnav/daily_nginx_data.log
+
+      ## Get most requested urls
+      echo -e "\nNumber of requests | Requested urls"  | sudo tee -a /var/log/arnav/daily_nginx_data.log
+      sudo awk -F\" '{print $2}' /var/log/nginx/access.log | awk '{print $2}' | sort | uniq -c | sort -r | sudo tee -a /var/log/arnav/daily_nginx_data.log
+
+      ## Email the file /var/log/arnav/data.log to 'root'
+      echo "Daily Nginx Access logs. PFA" | mail -s "Daily Nginx Access log Insights" root -A /var/log/arnav/daily_nginx_data.log
+
+
+- name: Add !/bin/sh to the file while replacing Ansible Managed BEGIN block.
+  replace:
+    path: /etc/scripts/nginx_insights
+    regexp: '# BEGIN ANSIBLE MANAGED BLOCK'
+    replace: '#!/bin/sh'
+
+
+- name: Make file nginx_insights executable.
+  shell: chmod +x /etc/scripts/nginx_insights
+
+- name: Create a symlink between /etc/scripts/nginx_insights and cron.daily
+  file:
+    src: /etc/scripts/nginx_insights
+    dest: /etc/cron.daily/nginx_insights
+    state: link
+
+## Create another bash script in cron.d and hourly cron job to check RAM and email when the free RAM < 100mb.
+#
+#- name: Create and Populate a new file called "/etc/scripts/server_memory". This is the bash scripts that checks server RAM and emails to root if it falls below 100mb.
+#  blockinfile:
+#    path: /etc/scripts/server_memory
+#    create: yes
+#    block: |
+#      #!/bin/bash
+#
+#      ## get total free memory size in megabytes(MB)
+#      free=$(free -mt | grep Total | awk '{print $4}')
+#
+#      ## check if free memory is less than or equal to 100MB
+#      if [[ "$free" -le 100  ]]; then
+#              ## get top processes consuming system memory and save to temporary file
+#              ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%mem | head | sudo tee /tmp/top_proccesses_consuming_memory.txt
+#
+#              file=/tmp/top_proccesses_consuming_memory.txt
+#              ## send email if system memory is running low
+#              echo -e "Warning, server memory is running low!\n\nFree memory: $free MB" | mail -A "$file" -s "Warning, server memory is running low!\n\nFree memory: $free MB" root
+#      fi
+#
+#      exit 0
+#
+#- name: Make file /etc/scripts/server_memory executable.
+#  shell: chmod +x /etc/scripts/server_memory
+#
+#- name: Create a symlink between /etc/scripts/server_memory and cron.hourly
+#  file:
+#    src: /etc/scripts/server_memory
+#    dest: /etc/cron.hourly/server_memory
+#    state: link
+#

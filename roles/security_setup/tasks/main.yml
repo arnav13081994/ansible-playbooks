@@ -1,0 +1,145 @@
+###########################################################################################################
+# Script to install fail2ban and adding custom filters to ban unacceptable behaviour as well as set up automated security upgrades
+# Also installs Digital Ocean Monitoring agent.
+# https://www.digitalocean.com/community/tutorials/how-to-protect-an-nginx-server-with-fail2ban-on-ubuntu-14-04
+###################################################################################################################
+
+---
+
+- name: Update apt
+  apt: update_cache=yes
+
+- name: Install required system packages
+  apt: name={{ sys_packages }} state=present
+
+
+- name: Create and Populate a new file called "51unattended-upgrades" in dir "/etc/apt/apt.conf.d/" that will automatically supersede 50unattended-upgrades file
+  blockinfile:
+    path: /etc/apt/apt.conf.d/51unattended-upgrades
+    create: yes
+    block: |
+      // This file will have a higher priority than 50unattended-upgrades
+
+      Unattended-Upgrade::Allowed-Origins {
+
+      "${distro_id}:${distro_codename}";
+      "${distro_id}:${distro_codename}-security";
+      "${distro_id}ESM:${distro_codename}";
+      "${distro_id}:${distro_codename}-updates";
+
+      };
+
+      Unattended-Upgrade::Mail "root";
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Remove-Unused-Dependencies "true";
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "02:00";
+
+- name: Create and Populate a new file called "21auto-upgrades" in dir "/etc/apt/apt.conf.d/" that will automatically supersede other auto upgrade files. This will cleanup unused dependencies and auto install security upgrades
+  blockinfile:
+    path: /etc/apt/apt.conf.d/21auto-upgrades
+    create: yes
+    block: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::AutocleanInterval "7";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::RandomSleep "1";
+      APT::Periodic::Verbose "2";
+
+- name: Populate /etc/fail2ban/jail.local
+  blockinfile:
+    path: /etc/fail2ban/jail.local
+    create: yes
+    block: |
+      [DEFAULT]
+      ignoreip = 127.0.0.1/8 {{server_IP}}
+      mta = mail
+      sendername = Fail2Ban Email
+      action = %(action_mwl)s
+      destemail = root
+
+
+      [sshd]
+      enabled = true
+      filter = sshd
+      maxretry = 3
+      bantime = 10080m
+
+
+      [nginx-badbots]
+      enabled  = true
+      port     = http,https
+      filter   = nginx-badbots
+      logpath  = %(nginx_access_log)s
+      maxretry = 2
+
+
+      [nginx-noproxy]
+      enabled  = true
+      port     = http,https
+      filter   = nginx-noproxy
+      logpath  = %(nginx_access_log)s
+      maxretry = 2
+
+
+      [postfix]
+      enabled = true
+      filter = postfix
+      maxretry = 3
+
+
+      [nginx-http-auth]
+      enabled = true
+      filter = nginx-http-auth
+      port = http,https
+      logpath = /var/log/nginx/error.log
+  notify:
+    - Activate fail2ban new config
+
+
+- name: Create a filter for [nginx-http-auth]
+  lineinfile:
+    path: /etc/fail2ban/filter.d/nginx-http-auth.conf
+    insertafter: '\?\\s\*\$$'
+    line:  '            ^ \[error\] \d+#\d+: \*\d+ no user/password was provided for basic authentication, client: <HOST>, server: \S+, request: "\S+ \S+ HTTP/\d+\.\d+", host: "\S+"\s*$'
+  notify:
+    - Activate fail2ban new config
+
+
+- name: Copy the apache badbots file and rename it
+  command: sudo cp apache-badbots.conf nginx-badbots.conf
+  args:
+    chdir: /etc/fail2ban/filter.d
+  notify:
+    - Activate fail2ban new config
+
+
+- name: Create a filter for [nginx-noproxy]
+  blockinfile:
+    path: /etc/fail2ban/filter.d/nginx-noproxy.conf
+    create: yes
+    block: |
+      [Definition]
+
+      failregex = ^<HOST> -.*GET http.*
+
+      ignoreregex =
+  notify:
+    - Activate fail2ban new config
+
+
+- name: Modify gunicorn.service file to auto start gunicorn on any error
+  lineinfile:
+    path: /etc/systemd/system/gunicorn.service
+    insertafter: 'application'
+    line: 'Restart=on-failure'
+  notify:
+    - Reload gunicorn and get status
+
+
+- name: Install Digital Ocean Monitoring Agent
+  shell: curl -sSL https://repos.insights.digitalocean.com/install.sh | sudo bash
+  args:
+    executable: /bin/bash
+

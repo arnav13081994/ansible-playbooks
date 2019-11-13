@@ -1,0 +1,100 @@
+############################################################################################################
+#
+#  This file will install and setup gunicorn for a django project called myproject (can be changed in the vars section).
+#
+#####################################################################################################################
+
+---
+- hosts: web
+  become: yes
+  tasks:
+
+# The block parameter with "|" allows to add the text in exactly the same format as desired with newlines.
+    - name: Create and populate gunicorn.service file
+      blockinfile:
+        path: /etc/systemd/system/gunicorn.service
+        create: yes
+        block: |
+                [Unit]
+                Description=gunicorn daemon
+                Requires=gunicorn.socket
+                After=network.target
+
+                [Service]
+                User={{create_user}}
+                Group=www-data
+                WorkingDirectory=/home/{{create_user}}/{{project_name}}
+                ExecStart=/home/{{create_user}}/{{project_name}}/venv/bin/gunicorn \
+                          --access-logfile - \
+                          --workers 3 \
+                          --bind unix:/run/gunicorn.sock \
+                          {{project_name}}.wsgi:application
+
+                [Install]
+                WantedBy=multi-user.target
+
+
+    - name: Create and populate gunicorn.socket file
+      blockinfile:
+        path: /etc/systemd/system/gunicorn.socket
+        create: yes
+        block: |
+                [Unit]
+                Description=gunicorn socket
+
+                [Socket]
+                ListenStream=/run/gunicorn.sock
+
+                [Install]
+                WantedBy=sockets.target
+
+####   The code below starts and enables gunicorn.socket and service files.
+
+    - name: Start gunicorn.socket file
+      command: systemctl start gunicorn.socket
+      register: start_gsocket
+    - debug: msg="{{ start_gsocket.stderr }}"
+
+    - name: Enable gunicorn.socket file
+      command: systemctl enable gunicorn.socket
+      register: enable_gsocket
+      notify:
+        - Reload gunicorn and get status
+    - debug: msg="{{ enable_gsocket.stderr }}"
+
+
+  handlers:
+
+    - name: Reload gunicorn and get status
+      command: "{{ item }}"
+      become_user: root
+      with_items:
+        - sudo systemctl daemon-reload
+        - sudo systemctl restart gunicorn.service
+        - sudo systemctl status gunicorn
+
+    - name: Restart NginX and get status
+      command: "{{ item }}"
+      become_user: root
+      with_items:
+        - sudo nginx -t
+        - sudo systemctl restart nginx
+        - sudo systemctl status nginx
+
+    - name: Activate fail2ban new config
+      command: "{{ item }}"
+      become_user: root
+      with_items:
+        - sudo service fail2ban restart
+        - sudo systemctl start fail2ban.service
+        - sudo fail2ban-client status
+
+
+    - name: Get postgresql status
+      command: sudo systemctl status postgresql
+      become_user: root
+
+
+    - name: Make sure .env file has the correct permissions
+      shell: chmod 0775 /home/{{create_user}}/{{project_name}}/.env
+      become_user: root

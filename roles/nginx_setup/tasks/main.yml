@@ -1,0 +1,52 @@
+############################################################################################################
+#
+#  This file will install and setup NginX for a django project called myproject (can be changed in the vars section)
+#  And for the given IP addresses and domain names.
+#
+#####################################################################################################################
+
+---
+- name: Update apt
+  apt: update_cache=yes
+
+- name: Install NginX
+  apt: name={{ sys_packages }} state=present
+
+# The block parameter with "|" allows to add the text in exactly the same format as desired with newlines.
+##### Please note that if ssl has already been setup running this file will change the nginx config that was added by certbot.
+- name: Create and populate /etc/nginx/sites-available/{{project_name}} file
+  blockinfile:
+    path: /etc/nginx/sites-available/{{project_name}}
+    create: yes
+    block: |
+      server {
+          listen 80;
+          server_name {{server_IP}} {{domain_name}} www.{{domain_name}};
+
+          location = /favicon.ico { access_log off; log_not_found off; }
+          location /static/ {
+              root /home/{{create_user}}/{{project_name}};
+          }
+
+          location / {
+              include proxy_params;
+              proxy_pass http://unix:/run/gunicorn.sock;
+          }
+      }
+  notify:
+    - Restart NginX and get status
+
+
+- name: Create a symlink to sites-enabled
+  file:
+    src: /etc/nginx/sites-available/{{project_name}}
+    dest: /etc/nginx/sites-enabled/{{project_name}}
+    state: link
+
+
+- name: Delete 8000 development server ufw rule
+  command: ufw delete allow 8000
+
+
+- name: Allow full access to port 80
+  command: ufw allow 'Nginx Full'

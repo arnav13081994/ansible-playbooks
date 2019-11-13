@@ -1,0 +1,62 @@
+###########################################################################################################
+# This is the main playbook that can be run on a fresh ubuntu server to install and setup a Production ready Django Project
+###################################################################################################################
+
+### Please note that `ansible_user` is set as deploy in the hosts file.
+
+# TODO Re-evalute this and main.yml since AWS s3 will now be used to do everything!
+---
+
+- hosts: local
+  roles:
+    - local_ssh
+
+
+- hosts: web
+  vars_files: roles/global/vars/main.yml
+  handlers:
+    - include: roles/global/handlers/main.yml  # Please note role specific handlers or global handlers can be overriden by adding them to that role's handlers/main.yml file
+  roles:
+    - role: user_setup
+      gather_facts: false
+      vars:
+          ansible_user: root
+          sys_packages: [ 'curl', 'vim', 'git', 'ufw']
+
+    - role: postgres_setup
+      become: yes
+      vars:
+        sys_packages: ["python3-pip", "python3-dev", "libpq-dev", "postgresql", "postgresql-contrib"]
+
+    - role: django_setup
+
+    - role: gunicorn_setup
+      become: yes
+
+    - role: nginx_setup
+      become: yes
+      vars:
+        sys_packages: [ "nginx" ]
+
+    - role: ssl_setup
+      become: yes
+      become_user: root
+      vars:
+          apache_vhosts:
+            - {servername: '{{domain_name}}'}
+            - {servername: 'www.{{domain_name}}'}
+
+    - role: mail_setup
+      become: yes
+      become_method: sudo
+      vars:
+          sys_packages: ['mailutils']
+          ansible_user: root
+
+    - role: security_setup
+      become: yes
+      vars:
+        sys_packages: [ 'unattended-upgrades',  'fail2ban']
+        ansible_user: root
+
+# If anything fails first check user permissions, file and folder permissions.

@@ -1,0 +1,7 @@
+---
+
+- name: Restart Postfix
+  shell: sudo systemctl restart postfix
+
+- name: Make sure changes take effect
+  shell: sudo newaliases

@@ -1,0 +1,18 @@
+############################################################################################################
+#
+## This script will auto deploy a django project on the ansible_host IP's as specified in the hosts file.
+#
+####################################################################################################################
+---
+
+- hosts: local
+  roles:
+    - local_ssh
+
+- hosts: web
+  vars_files: roles/global/vars/main.yml
+  gather_facts: false
+  handlers:
+      - include: roles/global/handlers/main.yml
+  roles:
+    - deploy

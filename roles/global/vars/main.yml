@@ -1,0 +1,28 @@
+---
+# Variables for setting up a fresh django server and for django app deployment
+db_name:
+db_user_name:
+db_user_password:
+
+
+copy_local_key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+create_user:
+project_name:
+server_IP:
+domain_name:
+AllOWED_HOSTS:
+repo_url:
+work_dir:
+DATABASE_URL: postgresql://{{db_user_name}}:{{db_user_password}}@localhost:5432/{{db_name}} # Django settings variable
+log_email:
+CACHE_LOCATION: "{{server_IP}}:11211"
+
+# Variables for Role Certbot certs.
+certbot_create_standalone_stop_services: nginx
+certbot_create_method: nginx
+certbot_admin_email: "{{log_email}}"
+
+# Variables for setting up a postfix service
+hostname: mail
+email: "{{log_email}}"
+

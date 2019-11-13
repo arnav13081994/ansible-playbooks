@@ -1,0 +1,73 @@
+###########################################################################################################
+
+# This script will auto deploy a django project on the ansible_host IP's as specified in the hosts file.
+
+###################################################################################################################
+
+
+---
+
+
+- name: Pull master branch    # Root user is not the owner of {{project_name}} so git clone would fail. Also .git is owned by {{create_user}} and not root
+  git:
+    repo: '{{repo_url}}'
+    dest: /home/{{create_user}}/{{project_name}}
+    accept_hostkey: yes
+  become_user: "{{create_user}}"
+
+- name: Install the requirements.txt file in the virtualenv and also create the virtualenv, venv, if it doesn't exist already
+  pip:
+    requirements: /home/{{create_user}}/{{project_name}}/requirements.txt
+    virtualenv: /home/{{create_user}}/{{project_name}}/venv
+
+- name: Transfer .env file from local to host
+  become_user: root
+  copy:
+    src: /{{work_dir}}/.env
+    dest: /home/{{create_user}}/{{project_name}}/.env
+    mode: '0775'
+
+- name: Activate virtualenv
+  shell: source /home/{{create_user}}/{{project_name}}/venv/bin/activate
+  args:
+    executable: /bin/bash
+
+
+- name: Modify AllOWED_HOSTS in .env file
+  shell:  /home/{{create_user}}/{{project_name}}/venv/bin/dotenv set ALLOWED_HOSTS {{AllOWED_HOSTS}}
+  args:
+    chdir: /home/{{create_user}}/{{project_name}}
+  notify:
+    - Make sure .env file has the correct permissions
+
+- name: Modify DATABASE_URL in .env file
+  shell:  /home/{{create_user}}/{{project_name}}/venv/bin/dotenv set DATABASE_URL {{DATABASE_URL}}
+  args:
+    chdir: /home/{{create_user}}/{{project_name}}
+  notify:
+    - Make sure .env file has the correct permissions
+
+- name: Modify CACHE_LOCATION in .env file
+  shell:  /home/{{create_user}}/{{project_name}}/venv/bin/dotenv set CACHE_LOCATION {{CACHE_LOCATION}}
+  args:
+    chdir: /home/{{create_user}}/{{project_name}}
+  notify:
+    - Make sure .env file has the correct permissions
+
+
+- name: Migrate Django Application
+  django_manage:
+    command: migrate
+    app_path: /home/{{create_user}}/{{project_name}}
+    virtualenv: /home/{{create_user}}/{{project_name}}/venv
+
+
+- name: Collect all static assets and upload to CDN
+  django_manage:
+    command: collectstatic
+    app_path: /home/{{create_user}}/{{project_name}}
+    virtualenv: /home/{{create_user}}/{{project_name}}/venv
+  notify:
+    - Reload gunicorn and get status
+    - Restart NginX and get status
+    - Get postgresql status

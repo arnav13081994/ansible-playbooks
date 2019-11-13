@@ -1,0 +1,5 @@
+[local]
+local_machine ansible_connection=local ansible_host=localhost
+
+[web]
+serv_2 ansible_host=[ENTER YOUR SERVER IP] ansible_user=[Enter same user as create_user in global/vars] ansible_python_interpreter=/usr/bin/python3
