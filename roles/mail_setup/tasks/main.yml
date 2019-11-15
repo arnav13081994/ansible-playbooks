@@ -134,37 +134,3 @@
     src: /etc/scripts/nginx_insights
     dest: /etc/cron.daily/nginx_insights
     state: link
-
-## Create another bash script in cron.d and hourly cron job to check RAM and email when the free RAM < 100mb.
-#
-#- name: Create and Populate a new file called "/etc/scripts/server_memory". This is the bash scripts that checks server RAM and emails to root if it falls below 100mb.
-#  blockinfile:
-#    path: /etc/scripts/server_memory
-#    create: yes
-#    block: |
-#      #!/bin/bash
-#
-#      ## get total free memory size in megabytes(MB)
-#      free=$(free -mt | grep Total | awk '{print $4}')
-#
-#      ## check if free memory is less than or equal to 100MB
-#      if [[ "$free" -le 100  ]]; then
-#              ## get top processes consuming system memory and save to temporary file
-#              ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%mem | head | sudo tee /tmp/top_proccesses_consuming_memory.txt
-#
-#              file=/tmp/top_proccesses_consuming_memory.txt
-#              ## send email if system memory is running low
-#              echo -e "Warning, server memory is running low!\n\nFree memory: $free MB" | mail -A "$file" -s "Warning, server memory is running low!\n\nFree memory: $free MB" root
-#      fi
-#
-#      exit 0
-#
-#- name: Make file /etc/scripts/server_memory executable.
-#  shell: chmod +x /etc/scripts/server_memory
-#
-#- name: Create a symlink between /etc/scripts/server_memory and cron.hourly
-#  file:
-#    src: /etc/scripts/server_memory
-#    dest: /etc/cron.hourly/server_memory
-#    state: link
-#

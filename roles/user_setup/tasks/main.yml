@@ -1,5 +1,7 @@
 ###########################################################################################################
-# Creates the initial server with all the required config. Please note that you need to create a server and then put it in the "hosts" file
+# Creates the initial server with all the required config. Please note that you need to create a server
+# and then put it in the "hosts" file
+## Also sets up memcached_setup on the current server's port 11211
 ###################################################################################################################
 ---
 

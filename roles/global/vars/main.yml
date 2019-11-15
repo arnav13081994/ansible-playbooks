@@ -15,7 +15,6 @@ repo_url:
 work_dir:
 DATABASE_URL: postgresql://{{db_user_name}}:{{db_user_password}}@localhost:5432/{{db_name}} # Django settings variable
 log_email:
-CACHE_LOCATION: "{{server_IP}}:11211"
 
 # Variables for Role Certbot certs.
 certbot_create_standalone_stop_services: nginx
