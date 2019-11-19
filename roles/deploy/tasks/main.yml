@@ -47,6 +47,15 @@
   notify:
     - Make sure .env file has the correct permissions
 
+# This will make sure DEBUG is always False in Production
+- name: Modify DEBUG in .env file
+  shell:  /home/{{create_user}}/{{project_name}}/venv/bin/dotenv set DEBUG ''
+  args:
+    chdir: /home/{{create_user}}/{{project_name}}
+  notify:
+    - Make sure .env file has the correct permissions
+
+
 - name: Migrate Django Application
   django_manage:
     command: migrate
