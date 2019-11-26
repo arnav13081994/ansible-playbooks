@@ -31,7 +31,7 @@
 
 
 - name: Generate new certificate if one doesn't exist. This also sets up a cronjob to auto renew the certificate
-  shell: "certbot  --{{certbot_create_method}} --noninteractive --redirect --agree-tos --email {{ certbot_admin_email }} -d {{ item.item.servername }}"
+  shell: "certbot  --{{certbot_create_method}} --noninteractive --redirect --agree-tos --email {{ certbot_admin_email }} -d {{domain_name}}  -d www.{{domain_name}}"
   with_items: "{{ letsencrypt_cert.results }}"
   when: item.stat.exists == False
 
@@ -50,7 +50,7 @@
   lineinfile:
     path: /etc/nginx/sites-available/{{project_name}}
     insertafter: 'privkey.pem;'
-    line: '    ssl_trusted_certificate /etc/letsencrypt/live/www.{{domain_name}}/chain.pem; # added by Arnav'
+    line: '    ssl_trusted_certificate /etc/letsencrypt/live/{{domain_name}}/chain.pem; # added by Arnav'
   notify:
     - Restart NginX and get status
 

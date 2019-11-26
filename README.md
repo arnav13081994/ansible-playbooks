@@ -45,6 +45,8 @@ This password would be asked by you when you run the playbook and would be saved
     1) A way around this is to run `set +o history` before you run `ansible-vault encrypt_string [DB_USER_PASSWORD] ` and then run `set -o history` to enable bash history. The first command disables command line bash history and the last command enables it.
  2) Please note that in case you are using piped outputs in bash. Then commands before and after  '|' will not inherit SUDO in case any command is run with that.
  3) All variables can be set in roles/global/vars/main.yml
+ 4) Make sure your www.[DOMAINNAME] and [DOMAINNAME] have an A records. SSL setup assumes this setup.
+ 
 ```
 
 # Aside:
